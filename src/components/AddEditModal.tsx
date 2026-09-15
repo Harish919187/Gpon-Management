@@ -118,17 +118,6 @@ const AddEditModal: React.FC<AddEditModalProps> = ({ record, onSave, onClose }) 
                   className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Contact Number</label>
-                <input
-                  type="text"
-                  name="contactNumber"
-                  value={formData.contactNumber}
-                  onChange={handleChange}
-                  className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
-                />
-              </div>
               
               <div className="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse pt-2">
                 <button

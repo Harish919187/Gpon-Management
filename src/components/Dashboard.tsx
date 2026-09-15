@@ -5,8 +5,6 @@ import { parseExcelData } from '../utils/excel';
 import GponTable from './GponTable';
 import AddEditModal from './AddEditModal';
 
-const STORAGE_KEY = 'gpon_data_records';
-
 const Dashboard: React.FC = () => {
   const [records, setRecords] = useState<GponRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
