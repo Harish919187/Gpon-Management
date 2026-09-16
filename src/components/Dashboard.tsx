@@ -14,26 +14,66 @@ const Dashboard: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<GponRecord | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper function to map data to lowercase for Supabase if needed
+  const mapToLowercase = (item: any) => ({
+    id: item.id,
+    oltname: item.oltName,
+    oltnumber: item.oltNumber,
+    portnumber: item.portNumber,
+    location: item.location,
+    status: item.status
+  });
+
+  const checkEnv = () => {
+    if (import.meta.env.VITE_SUPABASE_URL === undefined) {
+      alert("ERROR: Missing VITE_SUPABASE_URL in Vercel Environment Variables. Please add it and redeploy!");
+      return false;
+    }
+    return true;
+  }
+
   // Load from Supabase on mount
   useEffect(() => {
+    if (!checkEnv()) return;
     const loadData = async () => {
-      const { data, error } = await supabase.from('gpon_records').select('*');
+      let { data, error } = await supabase.from('gpon_records').select('*');
       if (error) {
         console.error('Failed to fetch records:', error);
       } else if (data) {
-        setRecords(data as GponRecord[]);
+        // If data has lowercase keys (oltname), map it back to camelCase for the frontend
+        const mappedData = data.map((item: any) => ({
+          id: item.id,
+          oltName: item.oltName || item.oltname || '',
+          oltNumber: item.oltNumber || item.oltnumber || '',
+          portNumber: item.portNumber || item.portnumber || '',
+          location: item.location || '',
+          status: item.status || 'Pending'
+        }));
+        setRecords(mappedData as GponRecord[]);
       }
     };
     loadData();
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!checkEnv()) return;
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const data = await parseExcelData(file);
-      const { error } = await supabase.from('gpon_records').insert(data);
+      
+      // Try normal insert
+      let { error } = await supabase.from('gpon_records').insert(data);
+      
+      // Fallback: If it failed due to column names, try inserting with lowercase column names
+      if (error && error.message.includes('does not exist')) {
+        console.warn('Column mismatch detected, trying lowercase columns...');
+        const lowercaseData = data.map(mapToLowercase);
+        const retry = await supabase.from('gpon_records').insert(lowercaseData);
+        error = retry.error;
+      }
+
       if (error) {
         console.error('Supabase insert error:', error);
         alert(`Failed to save Excel data to database. Error: ${error.message}`);
@@ -51,6 +91,7 @@ const Dashboard: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!checkEnv()) return;
     if (window.confirm('Are you sure you want to delete this record?')) {
       const { error } = await supabase.from('gpon_records').delete().eq('id', id);
       if (!error) {
@@ -68,8 +109,16 @@ const Dashboard: React.FC = () => {
   };
 
   const handleSave = async (record: GponRecord) => {
+    if (!checkEnv()) return;
+    
     if (editingRecord) {
-      const { error } = await supabase.from('gpon_records').update(record).eq('id', record.id);
+      let { error } = await supabase.from('gpon_records').update(record).eq('id', record.id);
+      
+      if (error && error.message.includes('does not exist')) {
+        const retry = await supabase.from('gpon_records').update(mapToLowercase(record)).eq('id', record.id);
+        error = retry.error;
+      }
+
       if (!error) {
         setRecords(prev => prev.map(r => r.id === record.id ? record : r));
       } else {
@@ -78,7 +127,13 @@ const Dashboard: React.FC = () => {
       }
     } else {
       const newRecord = { ...record, id: crypto.randomUUID() };
-      const { error } = await supabase.from('gpon_records').insert([newRecord]);
+      let { error } = await supabase.from('gpon_records').insert([newRecord]);
+      
+      if (error && error.message.includes('does not exist')) {
+        const retry = await supabase.from('gpon_records').insert([mapToLowercase(newRecord)]);
+        error = retry.error;
+      }
+
       if (!error) {
         setRecords(prev => [newRecord, ...prev]);
       } else {
