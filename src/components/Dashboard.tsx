@@ -36,7 +36,7 @@ const Dashboard: React.FC = () => {
       const { error } = await supabase.from('gpon_records').insert(data);
       if (error) {
         console.error('Supabase insert error:', error);
-        alert('Failed to save Excel data to database.');
+        alert(`Failed to save Excel data to database. Error: ${error.message}`);
         return;
       }
       
@@ -57,7 +57,7 @@ const Dashboard: React.FC = () => {
         setRecords(prev => prev.filter(r => r.id !== id));
       } else {
         console.error(error);
-        alert('Failed to delete record.');
+        alert(`Failed to delete record. Error: ${error.message}`);
       }
     }
   };
@@ -74,7 +74,7 @@ const Dashboard: React.FC = () => {
         setRecords(prev => prev.map(r => r.id === record.id ? record : r));
       } else {
         console.error(error);
-        alert('Failed to update record.');
+        alert(`Failed to update record. Error: ${error.message}`);
       }
     } else {
       const newRecord = { ...record, id: crypto.randomUUID() };
@@ -83,7 +83,7 @@ const Dashboard: React.FC = () => {
         setRecords(prev => [newRecord, ...prev]);
       } else {
         console.error(error);
-        alert('Failed to add record.');
+        alert(`Failed to add record. Error: ${error.message}`);
       }
     }
     setIsModalOpen(false);
