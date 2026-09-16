@@ -34,12 +34,24 @@ const Dashboard: React.FC = () => {
 
   // Load from Supabase on mount
   useEffect(() => {
+    const localData = localStorage.getItem('gpon_data_records');
+    let loadedLocally = false;
+    if (localData) {
+      try {
+        setRecords(JSON.parse(localData));
+        loadedLocally = true;
+      } catch (e) {
+        console.error('Failed to parse local storage');
+      }
+    }
+
     if (!checkEnv()) return;
+
     const loadData = async () => {
       let { data, error } = await supabase.from('gpon_records').select('*');
       if (error) {
         console.error('Failed to fetch records:', error);
-      } else if (data) {
+      } else if (data && data.length > 0) {
         // If data has lowercase keys (oltname), map it back to camelCase for the frontend
         const mappedData = data.map((item: any) => ({
           id: item.id,
@@ -50,25 +62,42 @@ const Dashboard: React.FC = () => {
           status: item.status || 'Pending'
         }));
         setRecords(mappedData as GponRecord[]);
+        // Optionally sync it back to local storage
+        saveToLocalStorage(mappedData);
       }
     };
     loadData();
   }, []);
 
+  const saveToLocalStorage = (data: GponRecord[]) => {
+    try {
+      localStorage.setItem('gpon_data_records', JSON.stringify(data));
+    } catch (e) {
+      console.error('Local storage full or disabled');
+    }
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!checkEnv()) return;
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const data = await parseExcelData(file);
+      const newRecords = [...data, ...records];
+      
+      if (!checkEnv()) {
+         // Fallback immediately to local storage
+         setRecords(newRecords);
+         saveToLocalStorage(newRecords);
+         if (fileInputRef.current) fileInputRef.current.value = '';
+         return;
+      }
       
       // Try normal insert
       let { error } = await supabase.from('gpon_records').insert(data);
       
       // Fallback: If it failed due to column names, try inserting with lowercase column names
-      if (error && error.message.includes('does not exist')) {
-        console.warn('Column mismatch detected, trying lowercase columns...');
+      if (error && error.message?.includes('does not exist')) {
         const lowercaseData = data.map(mapToLowercase);
         const retry = await supabase.from('gpon_records').insert(lowercaseData);
         error = retry.error;
@@ -76,11 +105,13 @@ const Dashboard: React.FC = () => {
 
       if (error) {
         console.error('Supabase insert error:', error);
-        alert(`Failed to save Excel data to database. Error: ${error.message}`);
-        return;
+        alert(`Cloud save failed (${error.message}). Saving locally instead!`);
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
+      } else {
+        setRecords(newRecords);
       }
       
-      setRecords(prev => [...data, ...prev]);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -91,14 +122,20 @@ const Dashboard: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!checkEnv()) return;
+    const newRecords = records.filter(r => r.id !== id);
     if (window.confirm('Are you sure you want to delete this record?')) {
+      if (!checkEnv()) {
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
+        return;
+      }
       const { error } = await supabase.from('gpon_records').delete().eq('id', id);
       if (!error) {
-        setRecords(prev => prev.filter(r => r.id !== id));
+        setRecords(newRecords);
       } else {
-        console.error(error);
-        alert(`Failed to delete record. Error: ${error.message}`);
+        alert(`Cloud delete failed (${error.message}). Deleting locally instead!`);
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
       }
     }
   };
@@ -109,36 +146,54 @@ const Dashboard: React.FC = () => {
   };
 
   const handleSave = async (record: GponRecord) => {
-    if (!checkEnv()) return;
-    
     if (editingRecord) {
-      let { error } = await supabase.from('gpon_records').update(record).eq('id', record.id);
+      const newRecords = records.map(r => r.id === record.id ? record : r);
       
-      if (error && error.message.includes('does not exist')) {
+      if (!checkEnv()) {
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
+        setIsModalOpen(false);
+        setEditingRecord(undefined);
+        return;
+      }
+      
+      let { error } = await supabase.from('gpon_records').update(record).eq('id', record.id);
+      if (error && error.message?.includes('does not exist')) {
         const retry = await supabase.from('gpon_records').update(mapToLowercase(record)).eq('id', record.id);
         error = retry.error;
       }
 
       if (!error) {
-        setRecords(prev => prev.map(r => r.id === record.id ? record : r));
+        setRecords(newRecords);
       } else {
-        console.error(error);
-        alert(`Failed to update record. Error: ${error.message}`);
+        alert(`Cloud update failed (${error.message}). Saving locally instead!`);
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
       }
     } else {
       const newRecord = { ...record, id: crypto.randomUUID() };
-      let { error } = await supabase.from('gpon_records').insert([newRecord]);
+      const newRecords = [newRecord, ...records];
       
-      if (error && error.message.includes('does not exist')) {
+      if (!checkEnv()) {
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
+        setIsModalOpen(false);
+        setEditingRecord(undefined);
+        return;
+      }
+      
+      let { error } = await supabase.from('gpon_records').insert([newRecord]);
+      if (error && error.message?.includes('does not exist')) {
         const retry = await supabase.from('gpon_records').insert([mapToLowercase(newRecord)]);
         error = retry.error;
       }
 
       if (!error) {
-        setRecords(prev => [newRecord, ...prev]);
+        setRecords(newRecords);
       } else {
-        console.error(error);
-        alert(`Failed to add record. Error: ${error.message}`);
+        alert(`Cloud add failed (${error.message}). Saving locally instead!`);
+        setRecords(newRecords);
+        saveToLocalStorage(newRecords);
       }
     }
     setIsModalOpen(false);
