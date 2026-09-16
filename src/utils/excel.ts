@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { GponRecord } from '../types';
+import { generateId } from './id';
 
 export const parseExcelData = async (file: File): Promise<GponRecord[]> => {
   return new Promise((resolve, reject) => {
@@ -29,7 +30,7 @@ export const parseExcelData = async (file: File): Promise<GponRecord[]> => {
         const parsedData: GponRecord[] = json.map((row: any) => {
           console.log("Raw row data:", row); // For debugging in browser console
           return {
-            id: crypto.randomUUID(),
+            id: generateId(),
             oltName: String(getVal(row, ['OLTNAME', 'OLT'])),
             oltNumber: String(getVal(row, ['OLTNUMBER', 'OLTNO', 'OLTNUM'])),
             portNumber: String(getVal(row, ['PORTNUMBER', 'PORTNO', 'PORTNUM', 'PORT'])),

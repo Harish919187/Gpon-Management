@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Plus, Search, FileSpreadsheet } from 'lucide-react';
 import { GponRecord } from '../types';
 import { parseExcelData } from '../utils/excel';
+import { generateId } from '../utils/id';
 import GponTable from './GponTable';
 import AddEditModal from './AddEditModal';
 
@@ -35,11 +36,9 @@ const Dashboard: React.FC = () => {
   // Load from Supabase on mount
   useEffect(() => {
     const localData = localStorage.getItem('gpon_data_records');
-    let loadedLocally = false;
     if (localData) {
       try {
         setRecords(JSON.parse(localData));
-        loadedLocally = true;
       } catch (e) {
         console.error('Failed to parse local storage');
       }
@@ -171,7 +170,7 @@ const Dashboard: React.FC = () => {
         saveToLocalStorage(newRecords);
       }
     } else {
-      const newRecord = { ...record, id: crypto.randomUUID() };
+      const newRecord = { ...record, id: generateId() };
       const newRecords = [newRecord, ...records];
       
       if (!checkEnv()) {
