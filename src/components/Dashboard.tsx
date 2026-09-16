@@ -5,6 +5,8 @@ import { parseExcelData } from '../utils/excel';
 import GponTable from './GponTable';
 import AddEditModal from './AddEditModal';
 
+import { supabase } from '../utils/supabase';
+
 const Dashboard: React.FC = () => {
   const [records, setRecords] = useState<GponRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -12,35 +14,18 @@ const Dashboard: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<GponRecord | undefined>();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isInitialLoad = useRef(true);
-
-  // Load from backend on mount
+  // Load from Supabase on mount
   useEffect(() => {
-    fetch('http://localhost:3001/api/records')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setRecords(data);
-        }
-        // Small delay to prevent the save effect from firing immediately with empty array
-        setTimeout(() => { isInitialLoad.current = false; }, 500);
-      })
-      .catch(err => {
-        console.error('Failed to fetch records:', err);
-        isInitialLoad.current = false;
-      });
+    const loadData = async () => {
+      const { data, error } = await supabase.from('gpon_records').select('*');
+      if (error) {
+        console.error('Failed to fetch records:', error);
+      } else if (data) {
+        setRecords(data as GponRecord[]);
+      }
+    };
+    loadData();
   }, []);
-
-  // Save to backend whenever records change
-  useEffect(() => {
-    if (isInitialLoad.current) return;
-    
-    fetch('http://localhost:3001/api/records', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(records)
-    }).catch(err => console.error('Failed to save records:', err));
-  }, [records]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -48,9 +33,14 @@ const Dashboard: React.FC = () => {
 
     try {
       const data = await parseExcelData(file);
-      // Merge with existing or replace? Let's append/merge, ignoring duplicates could be complex,
-      // so for now we just append new records.
-      setRecords(prev => [...prev, ...data]);
+      const { error } = await supabase.from('gpon_records').insert(data);
+      if (error) {
+        console.error('Supabase insert error:', error);
+        alert('Failed to save Excel data to database.');
+        return;
+      }
+      
+      setRecords(prev => [...data, ...prev]);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -60,9 +50,15 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this record?')) {
-      setRecords(prev => prev.filter(r => r.id !== id));
+      const { error } = await supabase.from('gpon_records').delete().eq('id', id);
+      if (!error) {
+        setRecords(prev => prev.filter(r => r.id !== id));
+      } else {
+        console.error(error);
+        alert('Failed to delete record.');
+      }
     }
   };
 
@@ -71,11 +67,24 @@ const Dashboard: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = (record: GponRecord) => {
+  const handleSave = async (record: GponRecord) => {
     if (editingRecord) {
-      setRecords(prev => prev.map(r => r.id === record.id ? record : r));
+      const { error } = await supabase.from('gpon_records').update(record).eq('id', record.id);
+      if (!error) {
+        setRecords(prev => prev.map(r => r.id === record.id ? record : r));
+      } else {
+        console.error(error);
+        alert('Failed to update record.');
+      }
     } else {
-      setRecords(prev => [{ ...record, id: crypto.randomUUID() }, ...prev]);
+      const newRecord = { ...record, id: crypto.randomUUID() };
+      const { error } = await supabase.from('gpon_records').insert([newRecord]);
+      if (!error) {
+        setRecords(prev => [newRecord, ...prev]);
+      } else {
+        console.error(error);
+        alert('Failed to add record.');
+      }
     }
     setIsModalOpen(false);
     setEditingRecord(undefined);
